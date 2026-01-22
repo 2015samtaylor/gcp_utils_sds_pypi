@@ -91,7 +91,6 @@ class YearlyDataAppender:
 
         return df
 
-
     def load_and_append(self, table_name: str, blob_paths_old: List[str], current_df: pd.DataFrame, drop_duplicate_columns: list = None) -> pd.DataFrame:
         """
         Download multiple historical datasets from GCS, normalize and align both historical and current data, 
