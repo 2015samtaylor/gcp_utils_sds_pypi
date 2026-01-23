@@ -11,9 +11,23 @@ from io import TextIOWrapper
 
 
 def _ensure_audit_table_exists(project_id: str, audit_table_name: str) -> None:
-    """Create audit table if it doesn't exist"""
+    """Create audit table if it doesn't exist. Also creates 'logging' dataset if needed."""
     bq_client = bigquery.Client(project=project_id)
-    table_ref = f"{project_id}.logging.{audit_table_name}"
+    dataset_id = "logging"
+    dataset_ref = f"{project_id}.{dataset_id}"
+    table_ref = f"{project_id}.{dataset_id}.{audit_table_name}"
+    
+    # First, ensure the dataset exists
+    try:
+        bq_client.get_dataset(dataset_ref)
+        logging.debug(f"Dataset {dataset_id} already exists")
+    except Exception:
+        # Dataset doesn't exist, create it
+        dataset = bigquery.Dataset(dataset_ref)
+        dataset.location = "US"  # Default location, can be customized if needed
+        dataset.description = "Dataset for audit and logging tables"
+        dataset = bq_client.create_dataset(dataset, exists_ok=True)
+        logging.info(f"Created dataset {dataset_id}")
     
     try:
         bq_client.get_table(table_ref)
@@ -40,11 +54,12 @@ def _get_last_run_stats(project_id: str, audit_table_name: str, table_name: str)
     """Get statistics from the last run for comparison"""
     try:
         bq_client = bigquery.Client(project=project_id)
+        dataset_id = "logging"
         query = f"""
         SELECT 
             current_rows_added,
             run_date
-        FROM `{project_id}.logging.{audit_table_name}`
+        FROM `{project_id}.{dataset_id}.{audit_table_name}`
         WHERE table_name = @table_name
         ORDER BY run_date DESC
         LIMIT 1
@@ -80,7 +95,7 @@ def _log_gcs_upload_stats(
 ) -> None:
     """Log GCS upload statistics to BigQuery audit table"""
     
-    # Ensure audit table exists
+    # Ensure audit table exists (also creates 'logging' dataset if needed)
     _ensure_audit_table_exists(project_id, audit_table_name)
     
     # Get previous run stats
@@ -106,7 +121,8 @@ def _log_gcs_upload_stats(
     
     # Insert into audit table
     bq_client = bigquery.Client(project=project_id)
-    table_ref = f"{project_id}.logging.{audit_table_name}"
+    dataset_id = "logging"
+    table_ref = f"{project_id}.{dataset_id}.{audit_table_name}"
     errors = bq_client.insert_rows_json(
         table_ref, 
         [audit_record]
