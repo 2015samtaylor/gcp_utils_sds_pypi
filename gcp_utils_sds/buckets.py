@@ -109,8 +109,9 @@ def _log_gcs_upload_stats(
     )
     
     # Prepare audit record
+    # Convert datetime to ISO format string for JSON serialization
     audit_record = {
-        'run_date': datetime.now(),
+        'run_date': datetime.now().isoformat(),
         'table_name': table_name,
         'current_rows_added': current_rows_added,
         'previous_rows_added': previous_rows_added,
@@ -151,8 +152,7 @@ def send_to_gcs(
     save_path="",
     frame=None, 
     frame_name=None,
-    project_id=None,
-    dataset_id=None
+    project_id=None
 ):
     """
     Uploads a DataFrame as a CSV file to a GCS bucket directly from memory.
@@ -163,8 +163,7 @@ def send_to_gcs(
         save_path (str): The path within the bucket where the file will be saved (default: "" for root).
         frame (pd.DataFrame): The DataFrame to upload.
         frame_name (str): The name of the file to save. For audit tracking, frame_name (without extension) is used as the identifier stored in the table_name column of the audit table.
-        project_id (str, optional): Project ID for audit logging. If provided with dataset_id, enables audit logging.
-        dataset_id (str, optional): Dataset ID for audit logging. If provided with project_id, enables audit logging.
+        project_id (str, optional): Project ID for audit logging. If provided, enables audit logging to the 'logging' dataset.
     
     Note: For backward compatibility, you can call this as:
         send_to_gcs(bucket_name, save_path, frame, frame_name)
@@ -196,7 +195,7 @@ def send_to_gcs(
             logging.info(f"{frame_name} uploaded to GCS bucket {bucket_name} at {save_path}/{frame_name}")
             
             # Optional audit logging
-            if project_id and dataset_id:
+            if project_id:
                 # Use frame_name without extension as the identifier
                 # This is stored in the table_name column of the audit table
                 table_identifier = os.path.splitext(frame_name)[0]
@@ -219,7 +218,7 @@ def send_to_gcs(
     else:
         logging.info(f"No data present in {frame_name} file")
         # Still log audit for empty files if audit is enabled
-        if project_id and dataset_id:
+        if project_id:
             # Use frame_name without extension as the identifier
             # This is stored in the table_name column of the audit table
             table_identifier = os.path.splitext(frame_name)[0]
