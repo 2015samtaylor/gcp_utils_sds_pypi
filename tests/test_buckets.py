@@ -44,7 +44,7 @@ def test_send_to_gcs_default_save_path():
         assert call_args == 'file.csv'  # Should be just filename when save_path is ""
 
 def test_send_to_gcs_no_audit_when_params_missing():
-    """Test that audit logging doesn't run when project_id/dataset_id are not provided"""
+    """Test that audit logging doesn't run when project_id is not provided"""
     df = pd.DataFrame({'a': [1, 2]})
     mock_client = MagicMock()
     mock_bucket = MagicMock()
@@ -62,7 +62,7 @@ def test_send_to_gcs_no_audit_when_params_missing():
         mock_bq_client.assert_not_called()
 
 def test_send_to_gcs_audit_logging_when_params_provided():
-    """Test that audit logging runs when project_id and dataset_id are provided"""
+    """Test that audit logging runs when project_id is provided"""
     df = pd.DataFrame({'a': [1, 2], 'b': [3, 4]})
     mock_client = MagicMock()
     mock_bucket = MagicMock()
@@ -74,14 +74,13 @@ def test_send_to_gcs_audit_logging_when_params_provided():
         mock_client.bucket.return_value = mock_bucket
         mock_bucket.blob.return_value = mock_blob
         
-        # Call with project_id and dataset_id
+        # Call with project_id
         send_to_gcs(
             'test-bucket', 
             '', 
             df, 
             'file.csv',
-            project_id='test-project',
-            dataset_id='test-dataset'
+            project_id='test-project'
         )
         
         # Verify audit logging was called
@@ -112,8 +111,7 @@ def test_send_to_gcs_audit_uses_frame_name_as_identifier():
             '',
             df,
             'assessment_results_group.csv',
-            project_id='test-project',
-            dataset_id='test-dataset'
+            project_id='test-project'
         )
         
         # Verify frame_name without extension is used as table_name in audit record
@@ -134,8 +132,7 @@ def test_send_to_gcs_audit_for_empty_dataframe():
             '',
             df,
             'file.csv',
-            project_id='test-project',
-            dataset_id='test-dataset'
+            project_id='test-project'
         )
         
         # Verify audit was called with 0 rows
