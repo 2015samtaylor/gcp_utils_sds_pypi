@@ -42,6 +42,7 @@ def _ensure_audit_table_exists(project_id: str, audit_table_name: str) -> None:
             bigquery.SchemaField("row_difference", "INTEGER", mode="NULLABLE"),
             bigquery.SchemaField("bucket_name", "STRING", mode="REQUIRED"),
             bigquery.SchemaField("file_name", "STRING", mode="REQUIRED"),
+            bigquery.SchemaField("dag_name", "STRING", mode="NULLABLE"),
         ]
         
         table = bigquery.Table(table_ref, schema=schema)
@@ -50,7 +51,7 @@ def _ensure_audit_table_exists(project_id: str, audit_table_name: str) -> None:
         logging.info(f"Created audit table {audit_table_name} with schema")
 
 
-def _get_last_run_stats(project_id: str, audit_table_name: str, table_name: str) -> Optional[dict]:
+def _get_last_run_stats(project_id: str, audit_table_name: str, table_name: str, dag_name: Optional[str] = None) -> Optional[dict]:
     """Get statistics from the last run for comparison"""
     try:
         bq_client = bigquery.Client(project=project_id)
@@ -61,14 +62,22 @@ def _get_last_run_stats(project_id: str, audit_table_name: str, table_name: str)
             run_date
         FROM `{project_id}.{dataset_id}.{audit_table_name}`
         WHERE table_name = @table_name
-        ORDER BY run_date DESC
-        LIMIT 1
         """
         
+        query_parameters = [
+            bigquery.ScalarQueryParameter("table_name", "STRING", table_name)
+        ]
+        
+        if dag_name:
+            query += " AND dag_name = @dag_name"
+            query_parameters.append(
+                bigquery.ScalarQueryParameter("dag_name", "STRING", dag_name)
+            )
+        
+        query += " ORDER BY run_date DESC LIMIT 1"
+        
         job_config = bigquery.QueryJobConfig(
-            query_parameters=[
-                bigquery.ScalarQueryParameter("table_name", "STRING", table_name)
-            ]
+            query_parameters=query_parameters
         )
         
         result = bq_client.query(query, job_config=job_config).result()
@@ -91,7 +100,8 @@ def _log_gcs_upload_stats(
     table_name: str,
     current_rows_added: int,
     bucket_name: str,
-    file_name: str
+    file_name: str,
+    dag_name: Optional[str] = None
 ) -> None:
     """Log GCS upload statistics to BigQuery audit table"""
     
@@ -99,7 +109,7 @@ def _log_gcs_upload_stats(
     _ensure_audit_table_exists(project_id, audit_table_name)
     
     # Get previous run stats
-    last_run = _get_last_run_stats(project_id, audit_table_name, table_name)
+    last_run = _get_last_run_stats(project_id, audit_table_name, table_name, dag_name)
     previous_rows_added = last_run['current_rows_added'] if last_run else None
     
     row_difference = (
@@ -117,7 +127,8 @@ def _log_gcs_upload_stats(
         'previous_rows_added': previous_rows_added,
         'row_difference': row_difference,
         'bucket_name': bucket_name,
-        'file_name': file_name
+        'file_name': file_name,
+        'dag_name': dag_name
     }
     
     # Insert into audit table
@@ -152,7 +163,8 @@ def send_to_gcs(
     save_path="",
     frame=None, 
     frame_name=None,
-    project_id=None
+    project_id=None,
+    dag_name=None
 ):
     """
     Uploads a DataFrame as a CSV file to a GCS bucket directly from memory.
@@ -164,6 +176,7 @@ def send_to_gcs(
         frame (pd.DataFrame): The DataFrame to upload.
         frame_name (str): The name of the file to save. For audit tracking, frame_name (without extension) is used as the identifier stored in the table_name column of the audit table.
         project_id (str, optional): Project ID for audit logging. If provided, enables audit logging to the 'logging' dataset.
+        dag_name (str, optional): DAG name for audit logging. If provided, will be stored in the dag_name column of the audit table.
     
     Note: For backward compatibility, you can call this as:
         send_to_gcs(bucket_name, save_path, frame, frame_name)
@@ -206,7 +219,8 @@ def send_to_gcs(
                         table_name=table_identifier,
                         current_rows_added=rows_uploaded,
                         bucket_name=bucket_name,
-                        file_name=frame_name
+                        file_name=frame_name,
+                        dag_name=dag_name
                     )
                 except Exception as e:
                     logging.warning(f"Could not log audit stats (non-fatal): {e}")
@@ -229,7 +243,8 @@ def send_to_gcs(
                     table_name=table_identifier,
                     current_rows_added=0,
                     bucket_name=bucket_name,
-                    file_name=frame_name
+                    file_name=frame_name,
+                    dag_name=dag_name
                 )
             except Exception as e:
                 logging.warning(f"Could not log audit stats for empty file (non-fatal): {e}")
