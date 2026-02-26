@@ -2,11 +2,14 @@ name: Test and Publish Python 🐍 package to PyPI
 
 on:
   push:
+    branches: [main]
     tags:
       - 'v*.*.*'
+  pull_request:
+    branches: [main]
 
-# git tag v0.1.0
-# git push origin v0.1.0
+# To run tests only: push to main or open/update a PR.
+# To publish to PyPI: git tag v0.1.0 && git push origin v0.1.0
 
 jobs:
   build:
