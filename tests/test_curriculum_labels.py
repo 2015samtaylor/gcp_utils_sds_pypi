@@ -67,8 +67,8 @@ def test_prepare_subset_df_dedupes_and_adds_data_source():
     })
     out = _prepare_subset_df(df, "clever")
     assert list(out.columns) == STAGING_COLUMNS
-    assert out["data_source"].tolist() == ["clever", "clever"]
     assert len(out) == 1  # dedup on (year, data_source, title)
+    assert out["data_source"].tolist() == ["clever"]
     assert out["title"].iloc[0] == "Same Title"
 
 
