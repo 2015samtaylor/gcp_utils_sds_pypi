@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="gcp_utils_sds",
-    version="0.2.4",
+    version="0.2.5",
     packages=find_packages(),  # This should find gcp_utils_sds
     install_requires=[
         "google-cloud-storage",

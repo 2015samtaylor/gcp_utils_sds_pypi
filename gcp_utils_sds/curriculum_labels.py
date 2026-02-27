@@ -68,10 +68,14 @@ def _prepare_subset_df(
     frame: pd.DataFrame,
     data_source: str,
     column_map: Optional[Dict[str, str]] = None,
+    year: Optional[str] = None,
 ) -> pd.DataFrame:
     """
     Map vendor columns to standard names and build subset.
     column_map: standard_name -> vendor_column_name, e.g. {"year": "school_year", "title": "assessment_name"}.
+    year: Optional constant year to apply to all rows in the frame
+        (e.g. "25-26"). When provided, the frame does not need to contain
+        a year column; this value is used instead.
     """
     column_map = column_map or {}
     # Resolve actual column name for each standard field (use standard name if not in map)
@@ -79,15 +83,27 @@ def _prepare_subset_df(
     title_col = column_map.get("title", "title")
     curriculum_col = column_map.get("curriculum", "curriculum")
 
-    missing = [c for c in (year_col, title_col) if c not in frame.columns]
+    # Require title column always; require year column only when no explicit year is provided
+    required_vendor_cols = [title_col]
+    if year is None:
+        required_vendor_cols.append(year_col)
+
+    missing = [c for c in required_vendor_cols if c not in frame.columns]
     if missing:
         raise ValueError(
-            f"DataFrame missing required columns. Expected 'year' and 'title' (or mapped names). "
+            f"DataFrame missing required columns. Expected 'title' and (optionally) 'year' "
+            f"(or mapped names). "
             f"Missing: {missing}. Columns: {list(frame.columns)}"
         )
 
+    if year is None:
+        year_values = frame[year_col]
+    else:
+        # Broadcast a constant year string across all rows, preserving index
+        year_values = pd.Series([year] * len(frame), index=frame.index)
+
     subset = pd.DataFrame({
-        "year": frame[year_col],
+        "year": year_values,
         "data_source": data_source,
         "title": frame[title_col],
         "curriculum": frame[curriculum_col] if curriculum_col in frame.columns else pd.NA,
@@ -149,6 +165,7 @@ def append_assessment_titles(
     project_id: str,
     data_source: str,
     column_map: Optional[Dict[str, str]] = None,
+    year: Optional[str] = None,
     dataset_id: str = DEFAULT_DATASET_ID,
     table_name: str = DEFAULT_TABLE_NAME,
     batch_id: Optional[str] = None,
@@ -181,6 +198,9 @@ def append_assessment_titles(
         column_map: Optional mapping from standard name -> vendor column name.
             E.g. {"year": "school_year", "title": "assessment_name", "curriculum": "subject"}.
             Omit or use None for columns that already match (year, title, curriculum).
+        year: Optional constant year to apply to all rows in this frame
+            (e.g. "25-26"). When provided, the frame does not need its own
+            year column; this value is used instead.
         dataset_id: BigQuery dataset for the table.
         table_name: BigQuery table name.
         batch_id: Optional run id for traceability.
@@ -195,7 +215,7 @@ def append_assessment_titles(
         logging.info("append_assessment_titles: empty frame, nothing to append")
         return 0
 
-    subset = _prepare_subset_df(frame, data_source, column_map)
+    subset = _prepare_subset_df(frame, data_source, column_map, year=year)
     if subset.empty:
         logging.info("append_assessment_titles: no rows after dedup, nothing to append")
         return 0
