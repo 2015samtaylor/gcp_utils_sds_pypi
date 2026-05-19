@@ -3,8 +3,15 @@ import pandas as pd
 import logging
 import os
 from datetime import datetime
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    from importlib import import_module
+
+    ZoneInfo = import_module("backports.zoneinfo").ZoneInfo
 from google.cloud import storage
 from google.cloud import bigquery
+from google.cloud.exceptions import NotFound
 from typing import Optional
 from io import BytesIO
 from io import TextIOWrapper
@@ -30,12 +37,20 @@ def _ensure_audit_table_exists(project_id: str, audit_table_name: str) -> None:
         logging.info(f"Created dataset {dataset_id}")
     
     try:
-        bq_client.get_table(table_ref)
+        table = bq_client.get_table(table_ref)
         logging.debug(f"Audit table {audit_table_name} already exists")
-    except Exception:
+        schema_fields = {field.name for field in table.schema}
+        if "run_date_pacific_time" not in schema_fields:
+            table.schema = list(table.schema) + [
+                bigquery.SchemaField("run_date_pacific_time", "DATETIME", mode="NULLABLE")
+            ]
+            bq_client.update_table(table, ["schema"])
+            logging.info(f"Added run_date_pacific_time column to audit table {audit_table_name}")
+    except NotFound:
         # Table doesn't exist, create it
         schema = [
             bigquery.SchemaField("run_date", "TIMESTAMP", mode="REQUIRED"),
+            bigquery.SchemaField("run_date_pacific_time", "DATETIME", mode="NULLABLE"),
             bigquery.SchemaField("table_name", "STRING", mode="REQUIRED"),
             bigquery.SchemaField("current_rows_added", "INTEGER", mode="REQUIRED"),
             bigquery.SchemaField("previous_rows_added", "INTEGER", mode="NULLABLE"),
@@ -120,8 +135,14 @@ def _log_gcs_upload_stats(
     
     # Prepare audit record
     # Convert datetime to ISO format string for JSON serialization
+    run_date_pacific_time = (
+        datetime.now(ZoneInfo("America/Los_Angeles"))
+        .replace(tzinfo=None)
+        .strftime("%Y-%m-%d %H:%M:%S")
+    )
     audit_record = {
         'run_date': datetime.now().isoformat(),
+        'run_date_pacific_time': run_date_pacific_time,
         'table_name': table_name,
         'current_rows_added': current_rows_added,
         'previous_rows_added': previous_rows_added,

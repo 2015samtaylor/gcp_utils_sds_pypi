@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="gcp_utils_sds",
-    version="0.2.5",
+    version="0.2.6",
     packages=find_packages(),  # This should find gcp_utils_sds
     install_requires=[
         "google-cloud-storage",
@@ -11,6 +11,7 @@ setup(
         "google-auth-oauthlib",
         "pandas",
         "google-cloud-bigquery",
+        "backports.zoneinfo; python_version<'3.9'",
     ],
     author="Sam Taylor",
     author_email="2015samtaylor@gmail.com",

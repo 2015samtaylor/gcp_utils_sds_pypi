@@ -1,7 +1,7 @@
 import pytest
 import pandas as pd
 from unittest.mock import patch, MagicMock
-from gcp_utils_sds.buckets import send_to_gcs
+from gcp_utils_sds.buckets import send_to_gcs, _log_gcs_upload_stats
 
 def test_send_to_gcs_uploads_when_not_empty():
     df = pd.DataFrame({'a': [1, 2], 'b': [3, 4]})
@@ -139,3 +139,26 @@ def test_send_to_gcs_audit_for_empty_dataframe():
         mock_log_stats.assert_called_once()
         call_kwargs = mock_log_stats.call_args[1]
         assert call_kwargs['current_rows_added'] == 0
+
+
+def test_log_gcs_upload_stats_includes_pacific_time():
+    """Test that audit records include the Pacific wall-clock datetime."""
+    mock_bq_client = MagicMock()
+    mock_bq_client.insert_rows_json.return_value = []
+
+    with patch('gcp_utils_sds.buckets._ensure_audit_table_exists'), \
+         patch('gcp_utils_sds.buckets._get_last_run_stats', return_value=None), \
+         patch('gcp_utils_sds.buckets.bigquery.Client', return_value=mock_bq_client):
+        _log_gcs_upload_stats(
+            project_id='test-project',
+            audit_table_name='data_pipeline_audit',
+            table_name='file',
+            current_rows_added=2,
+            bucket_name='test-bucket',
+            file_name='file.csv',
+        )
+
+    audit_record = mock_bq_client.insert_rows_json.call_args[0][1][0]
+    assert 'run_date' in audit_record
+    assert 'run_date_pacific_time' in audit_record
+    assert audit_record['run_date_pacific_time'] is not None
